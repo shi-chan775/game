@@ -114,18 +114,18 @@ function App() {
                 </div>
               </div>
             )}
-
-            <div className="touch-controls" aria-label="画面内コントローラー">
-              <div className="dpad" role="group" aria-label="移動">
-                <button type="button" {...bindControl("up")} className={`control-button dpad-up${pressedControls.up ? " is-pressed" : ""}`}>▲</button>
-                <button type="button" {...bindControl("left")} className={`control-button dpad-left${pressedControls.left ? " is-pressed" : ""}`}>◀</button>
-                <button type="button" {...bindControl("down")} className={`control-button dpad-down${pressedControls.down ? " is-pressed" : ""}`}>▼</button>
-                <button type="button" {...bindControl("right")} className={`control-button dpad-right${pressedControls.right ? " is-pressed" : ""}`}>▶</button>
-                <span className="dpad-center" aria-hidden="true" />
-              </div>
-              <button type="button" {...bindControl("fire")} className={`control-button fire-button${pressedControls.fire ? " is-pressed" : ""}`}>FIRE</button>
-            </div>
           </div>
+        </div>
+
+        <div className="touch-controls" aria-label="画面内コントローラー">
+          <div className="dpad" role="group" aria-label="移動">
+            <button type="button" {...bindControl("up")} className={`control-button dpad-up${pressedControls.up ? " is-pressed" : ""}`}>▲</button>
+            <button type="button" {...bindControl("left")} className={`control-button dpad-left${pressedControls.left ? " is-pressed" : ""}`}>◀</button>
+            <button type="button" {...bindControl("down")} className={`control-button dpad-down${pressedControls.down ? " is-pressed" : ""}`}>▼</button>
+            <button type="button" {...bindControl("right")} className={`control-button dpad-right${pressedControls.right ? " is-pressed" : ""}`}>▶</button>
+            <span className="dpad-center" aria-hidden="true" />
+          </div>
+          <button type="button" {...bindControl("fire")} className={`control-button fire-button${pressedControls.fire ? " is-pressed" : ""}`}>FIRE</button>
         </div>
       </section>
 
