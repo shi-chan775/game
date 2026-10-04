@@ -1,7 +1,7 @@
 "use strict";
 
 let context;
-const GAME_WIDTH = 480;
+let GAME_WIDTH = 480;
 const GAME_HEIGHT = 720;
 
 class InputHandler {
@@ -281,13 +281,24 @@ class Explosion {
 
 class Starfield {
   constructor() {
-    this.stars = Array.from({ length: 75 }, () => ({
-      x: Math.random() * GAME_WIDTH,
-      y: Math.random() * GAME_HEIGHT,
-      size: Math.random() * 1.6 + 0.3,
-      speed: Math.random() * 70 + 24,
-      alpha: Math.random() * 0.55 + 0.2,
-    }));
+    this.stars = [];
+    this.resize();
+  }
+
+  resize(previousWidth = GAME_WIDTH) {
+    const scale = GAME_WIDTH / previousWidth;
+    for (const star of this.stars) star.x *= scale;
+    const starCount = Math.round(75 * GAME_WIDTH / 480);
+    while (this.stars.length < starCount) {
+      this.stars.push({
+        x: Math.random() * GAME_WIDTH,
+        y: Math.random() * GAME_HEIGHT,
+        size: Math.random() * 1.6 + 0.3,
+        speed: Math.random() * 70 + 24,
+        alpha: Math.random() * 0.55 + 0.2,
+      });
+    }
+    this.stars.length = starCount;
   }
 
   update(deltaTime) {
@@ -315,6 +326,10 @@ class Starfield {
 class Game {
   constructor(canvas, onStatus, getControls) {
     context = canvas.getContext("2d");
+    this.canvas = canvas;
+    this.resizeObserver = new ResizeObserver(() => this.resizeCanvas());
+    this.resizeObserver.observe(canvas);
+    this.resizeCanvas();
     this.state = "ready";
     this.onStatus = onStatus;
     this.input = new InputHandler(getControls);
@@ -335,6 +350,39 @@ class Game {
     this.player.draw();
     this.reportStatus();
     this.animationFrame = requestAnimationFrame(this.frame);
+  }
+
+  resizeCanvas() {
+    const bounds = this.canvas.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    const pixelRatio = window.devicePixelRatio || 1;
+    const width = Math.round(bounds.width * pixelRatio);
+    const height = Math.round(bounds.height * pixelRatio);
+    if (this.canvas.width === width && this.canvas.height === height) return;
+
+    const previousWidth = GAME_WIDTH;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    const scale = height / GAME_HEIGHT;
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+    GAME_WIDTH = width / scale;
+
+    if (this.player) {
+      const positionScale = GAME_WIDTH / previousWidth;
+      this.player.x *= positionScale;
+      this.player.x = Math.max(0, Math.min(GAME_WIDTH - this.player.width, this.player.x));
+      for (const enemy of this.enemies) {
+        enemy.x *= positionScale;
+        enemy.originX *= positionScale;
+        enemy.x = Math.max(0, Math.min(GAME_WIDTH - enemy.width, enemy.x));
+        enemy.originX = Math.max(0, Math.min(GAME_WIDTH - enemy.width, enemy.originX));
+      }
+      for (const bullet of this.bullets) bullet.x *= positionScale;
+      for (const explosion of this.explosions) {
+        for (const particle of explosion.particles) particle.x *= positionScale;
+      }
+      this.starfield.resize(previousWidth);
+    }
   }
 
   start() {
@@ -486,6 +534,7 @@ class Game {
 
   dispose() {
     cancelAnimationFrame(this.animationFrame);
+    this.resizeObserver.disconnect();
     this.input.dispose();
   }
 }

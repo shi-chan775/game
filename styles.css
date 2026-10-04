@@ -9,6 +9,13 @@
 
 * { box-sizing: border-box; }
 
+.game-shell,
+.game-shell * {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 html, body, #root {
   width: 100%;
   height: 100%;
@@ -96,18 +103,16 @@ body::before {
 .hud-right { text-align: right; }
 
 .game-stage {
+  position: relative;
   display: grid;
   min-height: 0;
   flex: 1;
-  place-items: center;
   overflow: hidden;
 }
 
 .canvas-wrap {
-  position: relative;
-  width: min(100%, calc(max(0px, 100dvh - 330px) * 2 / 3));
-  height: max(0px, calc(100dvh - 330px));
-  aspect-ratio: 2 / 3;
+  position: absolute;
+  inset: 0;
 }
 
 canvas {
@@ -241,10 +246,6 @@ kbd { padding: 2px 4px; border: 1px solid rgba(154, 177, 219, .28); color: #d4de
   .touch-controls { min-height: 132px; padding-block: 6px; }
   .joystick { width: min(24vh, 120px); }
   .fire-button { width: min(14vh, 68px); height: min(14vh, 68px); }
-  .canvas-wrap {
-    width: min(100%, calc(max(0px, 100dvh - 226px) * 2 / 3));
-    height: max(0px, calc(100dvh - 226px));
-  }
 }
 
 @media (max-width: 420px) {
