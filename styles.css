@@ -158,21 +158,29 @@ kbd { padding: 2px 4px; border: 1px solid rgba(154, 177, 219, .28); color: #d4de
   min-height: 184px;
   flex: none;
   align-items: center;
-  justify-content: center;
-  gap: clamp(12px, 4vw, 32px);
-  padding: 10px 12px;
+  justify-content: space-between;
+  gap: clamp(32px, 9vw, 72px);
+  padding: 10px clamp(20px, 7vw, 44px);
   border-top: 1px solid rgba(117, 154, 213, .18);
   background: rgba(10, 17, 36, .97);
   touch-action: none;
 }
 
-.dpad {
+.joystick {
   position: relative;
-  display: grid;
-  width: clamp(144px, 45vw, 180px);
-  height: clamp(144px, 45vw, 180px);
-  grid-template: repeat(3, 1fr) / repeat(3, 1fr);
-  place-items: center;
+  width: clamp(128px, 38vw, 156px);
+  flex: none;
+  aspect-ratio: 1;
+  border: 1px solid rgba(151, 191, 236, .28);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(36, 58, 91, .38) 0 42%, transparent 43%),
+    rgba(15, 28, 52, .72);
+  box-shadow: inset 0 0 22px rgba(6, 13, 29, .65), 0 0 18px rgba(63, 118, 177, .08);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .control-button {
@@ -190,16 +198,29 @@ kbd { padding: 2px 4px; border: 1px solid rgba(154, 177, 219, .28); color: #d4de
 }
 .control-button:hover { background: rgba(34, 58, 94, .88); }
 .control-button.is-pressed { border-color: #7de9f0; background: rgba(87, 198, 214, .55); }
-.dpad-up { grid-area: 1 / 2; }
-.dpad-left { grid-area: 2 / 1; }
-.dpad-down { grid-area: 3 / 2; }
-.dpad-right { grid-area: 2 / 3; }
-.dpad .control-button { width: 100%; height: 100%; border-radius: 10px; font-size: 22px; }
-.dpad-center { position: absolute; inset: 33.333%; border: 1px solid rgba(151, 191, 236, .16); border-radius: 8px; background: rgba(20, 35, 63, .35); pointer-events: none; }
+
+.joystick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 46%;
+  aspect-ratio: 1;
+  transform: translate(
+    calc(-50% + var(--stick-x, 0px)),
+    calc(-50% + var(--stick-y, 0px))
+  );
+  border: 1px solid rgba(150, 226, 245, .78);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #375c83, #172b4a 72%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .42), 0 0 18px rgba(99, 218, 236, .17);
+  pointer-events: none;
+}
+.joystick.is-active .joystick-knob { border-color: #9df4f4; }
 
 .fire-button {
-  width: clamp(88px, 28vw, 112px);
-  height: clamp(88px, 28vw, 112px);
+  width: clamp(64px, 18vw, 76px);
+  height: clamp(64px, 18vw, 76px);
+  flex: none;
   border: 1px solid rgba(255, 126, 155, .75);
   border-radius: 50%;
   background: rgba(123, 46, 80, .75);
@@ -218,8 +239,8 @@ kbd { padding: 2px 4px; border: 1px solid rgba(154, 177, 219, .28); color: #d4de
   .hud { min-height: 40px; padding-block: 4px; }
   .game-footer { min-height: 9px; }
   .touch-controls { min-height: 132px; padding-block: 6px; }
-  .dpad { width: min(24vh, 120px); height: min(24vh, 120px); }
-  .fire-button { width: min(18vh, 88px); height: min(18vh, 88px); }
+  .joystick { width: min(24vh, 120px); }
+  .fire-button { width: min(14vh, 68px); height: min(14vh, 68px); }
   .canvas-wrap {
     width: min(100%, calc(max(0px, 100dvh - 226px) * 2 / 3));
     height: max(0px, calc(100dvh - 226px));

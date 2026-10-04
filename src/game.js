@@ -34,6 +34,19 @@ class InputHandler {
       || Boolean(controls[controlAliases[keyName]]));
   }
 
+  getMovement() {
+    const controls = this.getControls();
+    const horizontal = (controls.moveX || 0)
+      + Number(this.keys.has("d")) - Number(this.keys.has("a"))
+      + Number(this.keys.has("arrowright")) - Number(this.keys.has("arrowleft"));
+    const vertical = (controls.moveY || 0)
+      + Number(this.keys.has("s")) - Number(this.keys.has("w"))
+      + Number(this.keys.has("arrowdown")) - Number(this.keys.has("arrowup"));
+    const magnitude = Math.hypot(horizontal, vertical);
+    const scale = magnitude > 1 ? 1 / magnitude : 1;
+    return { horizontal: horizontal * scale, vertical: vertical * scale };
+  }
+
   clear() {
     this.keys.clear();
   }
@@ -58,11 +71,7 @@ class Player {
   }
 
   update(deltaTime, input, bullets) {
-    let horizontal = Number(input.isDown("arrowright", "d")) - Number(input.isDown("arrowleft", "a"));
-    let vertical = Number(input.isDown("arrowdown", "s")) - Number(input.isDown("arrowup", "w"));
-    const magnitude = Math.hypot(horizontal, vertical) || 1;
-    horizontal /= magnitude;
-    vertical /= magnitude;
+    const { horizontal, vertical } = input.getMovement();
     this.x += horizontal * this.speed * deltaTime;
     this.y += vertical * this.speed * deltaTime;
     this.x = Math.max(8, Math.min(GAME_WIDTH - this.width - 8, this.x));

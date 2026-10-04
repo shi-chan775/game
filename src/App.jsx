@@ -8,7 +8,7 @@ const initialGameState = {
   state: "ready",
 };
 
-const controlKeys = ["up", "left", "down", "right", "fire"];
+const controlKeys = ["fire"];
 
 function formatScore(value) {
   return String(value).padStart(6, "0");
@@ -17,9 +17,15 @@ function formatScore(value) {
 function App() {
   const canvasRef = useRef(null);
   const gameRef = useRef(null);
-  const controlsRef = useRef(Object.fromEntries(controlKeys.map((key) => [key, false])));
+  const controlsRef = useRef({
+    moveX: 0,
+    moveY: 0,
+    ...Object.fromEntries(controlKeys.map((key) => [key, false])),
+  });
+  const joystickPointerRef = useRef(null);
   const [gameState, setGameState] = useState(initialGameState);
   const [pressedControls, setPressedControls] = useState({});
+  const [joystick, setJoystick] = useState({ x: 0, y: 0, active: false });
 
   const updateGameState = useCallback((nextState) => {
     setGameState(nextState);
@@ -43,8 +49,59 @@ function App() {
   };
 
   const releaseAllControls = () => {
-    controlsRef.current = Object.fromEntries(controlKeys.map((key) => [key, false]));
+    controlsRef.current = {
+      moveX: 0,
+      moveY: 0,
+      ...Object.fromEntries(controlKeys.map((key) => [key, false])),
+    };
+    joystickPointerRef.current = null;
+    setJoystick({ x: 0, y: 0, active: false });
     setPressedControls({});
+  };
+
+  const updateJoystick = (event) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const travel = bounds.width * 0.32;
+    const offsetX = event.clientX - (bounds.left + bounds.width / 2);
+    const offsetY = event.clientY - (bounds.top + bounds.height / 2);
+    const distance = Math.hypot(offsetX, offsetY);
+    const scale = Math.min(1, travel / (distance || 1));
+    const x = offsetX * scale;
+    const y = offsetY * scale;
+    const normalizedDistance = Math.min(distance / travel, 1);
+    const deadZone = 0.12;
+    const intensity = normalizedDistance <= deadZone
+      ? 0
+      : (normalizedDistance - deadZone) / (1 - deadZone);
+
+    controlsRef.current.moveX = distance ? (offsetX / distance) * intensity : 0;
+    controlsRef.current.moveY = distance ? (offsetY / distance) * intensity : 0;
+    setJoystick({ x, y, active: true });
+  };
+
+  const resetJoystick = () => {
+    joystickPointerRef.current = null;
+    controlsRef.current.moveX = 0;
+    controlsRef.current.moveY = 0;
+    setJoystick({ x: 0, y: 0, active: false });
+  };
+
+  const bindJoystick = {
+    onPointerDown: (event) => {
+      event.preventDefault();
+      joystickPointerRef.current = event.pointerId;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      updateJoystick(event);
+    },
+    onPointerMove: (event) => {
+      if (joystickPointerRef.current === event.pointerId) updateJoystick(event);
+    },
+    onPointerUp: (event) => {
+      if (joystickPointerRef.current === event.pointerId) resetJoystick();
+    },
+    onPointerCancel: resetJoystick,
+    onLostPointerCapture: resetJoystick,
+    "aria-label": "移動ジョイスティック",
   };
 
   const bindControl = (control) => ({
@@ -118,12 +175,16 @@ function App() {
         </div>
 
         <div className="touch-controls" aria-label="画面内コントローラー">
-          <div className="dpad" role="group" aria-label="移動">
-            <button type="button" {...bindControl("up")} className={`control-button dpad-up${pressedControls.up ? " is-pressed" : ""}`}>▲</button>
-            <button type="button" {...bindControl("left")} className={`control-button dpad-left${pressedControls.left ? " is-pressed" : ""}`}>◀</button>
-            <button type="button" {...bindControl("down")} className={`control-button dpad-down${pressedControls.down ? " is-pressed" : ""}`}>▼</button>
-            <button type="button" {...bindControl("right")} className={`control-button dpad-right${pressedControls.right ? " is-pressed" : ""}`}>▶</button>
-            <span className="dpad-center" aria-hidden="true" />
+          <div
+            {...bindJoystick}
+            className={`joystick${joystick.active ? " is-active" : ""}`}
+            style={{
+              "--stick-x": `${joystick.x}px`,
+              "--stick-y": `${joystick.y}px`,
+            }}
+            role="group"
+          >
+            <span className="joystick-knob" aria-hidden="true" />
           </div>
           <button type="button" {...bindControl("fire")} className={`control-button fire-button${pressedControls.fire ? " is-pressed" : ""}`}>FIRE</button>
         </div>
