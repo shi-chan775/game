@@ -69,10 +69,9 @@ function App() {
     const x = offsetX * scale;
     const y = offsetY * scale;
     const normalizedDistance = Math.min(distance / travel, 1);
-    const deadZone = 0.12;
-    const intensity = normalizedDistance <= deadZone
-      ? 0
-      : (normalizedDistance - deadZone) / (1 - deadZone);
+    const deadZone = 0.08;
+    const range = Math.max(0, (normalizedDistance - deadZone) / (1 - deadZone));
+    const intensity = range * range * (3 - 2 * range);
 
     controlsRef.current.moveX = distance ? (offsetX / distance) * intensity : 0;
     controlsRef.current.moveY = distance ? (offsetY / distance) * intensity : 0;

@@ -63,7 +63,9 @@ class Player {
   constructor() {
     this.width = 34;
     this.height = 42;
-    this.speed = 300;
+    this.speed = 480;
+    this.velocityX = 0;
+    this.velocityY = 0;
     this.x = (GAME_WIDTH - this.width) / 2;
     this.y = GAME_HEIGHT - 92;
     this.fireCooldown = 0;
@@ -72,10 +74,21 @@ class Player {
 
   update(deltaTime, input, bullets) {
     const { horizontal, vertical } = input.getMovement();
-    this.x += horizontal * this.speed * deltaTime;
-    this.y += vertical * this.speed * deltaTime;
-    this.x = Math.max(8, Math.min(GAME_WIDTH - this.width - 8, this.x));
+    const inputResponse = 1 - Math.exp(-16 * deltaTime);
+    this.velocityX += (horizontal * this.speed - this.velocityX) * inputResponse;
+    this.velocityY += (vertical * this.speed - this.velocityY) * inputResponse;
+    this.x += this.velocityX * deltaTime;
+    this.y += this.velocityY * deltaTime;
+    this.x = Math.max(0, Math.min(GAME_WIDTH - this.width, this.x));
     this.y = Math.max(70, Math.min(GAME_HEIGHT - this.height - 12, this.y));
+    if ((this.x === 0 && this.velocityX < 0)
+      || (this.x === GAME_WIDTH - this.width && this.velocityX > 0)) {
+      this.velocityX = 0;
+    }
+    if ((this.y === 70 && this.velocityY < 0)
+      || (this.y === GAME_HEIGHT - this.height - 12 && this.velocityY > 0)) {
+      this.velocityY = 0;
+    }
     this.fireCooldown -= deltaTime;
     this.invulnerableTime = Math.max(0, this.invulnerableTime - deltaTime);
     if (input.isDown(" ") && this.fireCooldown <= 0) {
