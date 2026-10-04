@@ -4,13 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node server.js --dev",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "node server.js",
+    "start": "node server.js"
   },
   "dependencies": {
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "vite": "^6.3.5"

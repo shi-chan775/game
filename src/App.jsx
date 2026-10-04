@@ -8,6 +8,14 @@ const initialGameState = {
   state: "ready",
 };
 
+const initialNetworkState = {
+  status: "connecting",
+  roomCode: "",
+  player: 0,
+  playerCount: 0,
+  error: "",
+};
+
 const controlKeys = ["fire"];
 
 function formatScore(value) {
@@ -17,6 +25,8 @@ function formatScore(value) {
 function App() {
   const canvasRef = useRef(null);
   const gameRef = useRef(null);
+  const networkRef = useRef(null);
+  const networkPlayerRef = useRef(0);
   const controlsRef = useRef({
     moveX: 0,
     moveY: 0,
@@ -26,9 +36,17 @@ function App() {
   const [gameState, setGameState] = useState(initialGameState);
   const [pressedControls, setPressedControls] = useState({});
   const [joystick, setJoystick] = useState({ x: 0, y: 0, active: false });
+  const [networkState, setNetworkState] = useState(initialNetworkState);
+  const [roomCodeInput, setRoomCodeInput] = useState("");
 
   const updateGameState = useCallback((nextState) => {
     setGameState(nextState);
+  }, []);
+
+  const sendNetwork = useCallback((message) => {
+    if (networkRef.current?.readyState === WebSocket.OPEN) {
+      networkRef.current.send(JSON.stringify(message));
+    }
   }, []);
 
   useEffect(() => {
@@ -36,12 +54,113 @@ function App() {
       canvasRef.current,
       updateGameState,
       () => controlsRef.current,
+      sendNetwork,
     );
     return () => {
       gameRef.current?.dispose();
       gameRef.current = null;
     };
-  }, [updateGameState]);
+  }, [sendNetwork, updateGameState]);
+
+  useEffect(() => {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+    networkRef.current = socket;
+
+    socket.addEventListener("open", () => {
+      setNetworkState((current) => ({
+        ...current,
+        status: current.roomCode ? current.status : "connected",
+      }));
+    });
+    socket.addEventListener("message", (event) => {
+      let message;
+      try {
+        message = JSON.parse(event.data);
+      } catch {
+        setNetworkState((current) => ({ ...current, error: "サーバーから不正な応答を受信しました。" }));
+        return;
+      }
+
+      if (message.type === "joined") {
+        networkPlayerRef.current = message.player;
+        setNetworkState({
+          status: message.playerCount === 2 ? "ready" : "waiting",
+          roomCode: message.roomCode,
+          player: message.player,
+          playerCount: message.playerCount,
+          error: "",
+        });
+      } else if (message.type === "room-state") {
+        setNetworkState((current) => ({
+          ...current,
+          status: message.started ? "playing" : message.playerCount === 2 ? "ready" : "waiting",
+          roomCode: message.roomCode,
+          playerCount: message.playerCount,
+          error: "",
+        }));
+      } else if (message.type === "peer-input") {
+        gameRef.current?.setRemoteInput(message.input);
+      } else if (message.type === "game-start") {
+        setNetworkState((current) => ({ ...current, status: "playing", error: "" }));
+        gameRef.current?.start(true, networkPlayerRef.current);
+      } else if (message.type === "game-snapshot") {
+        gameRef.current?.applySnapshot(message.snapshot);
+      } else if (message.type === "game-over") {
+        setNetworkState((current) => ({ ...current, status: "ready" }));
+      } else if (message.type === "peer-left") {
+        if (message.reason === "guest-disconnected") {
+          gameRef.current?.end();
+          setNetworkState((current) => ({
+            ...current,
+            status: "waiting",
+            playerCount: 1,
+            error: "相手がルームから退出しました。",
+          }));
+        } else {
+          networkPlayerRef.current = 0;
+          gameRef.current?.end();
+          setNetworkState({ ...initialNetworkState, status: "connected" });
+          if (message.reason === "host-disconnected") {
+            setNetworkState((current) => ({ ...current, error: "ホストとの接続が切れました。" }));
+          }
+        }
+      } else if (message.type === "error") {
+        setNetworkState((current) => ({ ...current, error: message.message }));
+      }
+    });
+    socket.addEventListener("error", () => {
+      if (networkRef.current === socket) {
+        setNetworkState((current) => ({
+          ...current,
+          status: "disconnected",
+          error: "オンラインサーバーに接続できません。",
+        }));
+      }
+    });
+    socket.addEventListener("close", () => {
+      if (networkRef.current === socket) {
+        networkRef.current = null;
+        setNetworkState((current) => ({
+          ...current,
+          status: "disconnected",
+          error: "オンラインサーバーとの接続が切れました。",
+        }));
+      }
+    });
+    return () => {
+      networkRef.current = null;
+      socket.close();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (networkState.player !== 2 || networkState.status !== "playing") return undefined;
+    const interval = window.setInterval(() => {
+      sendNetwork({ type: "input", input: gameRef.current?.getLocalInput() });
+    }, 33);
+    return () => window.clearInterval(interval);
+  }, [networkState.player, networkState.status, sendNetwork]);
 
   const setControl = (control, pressed) => {
     controlsRef.current[control] = pressed;
@@ -121,6 +240,10 @@ function App() {
     gameRef.current?.start();
   };
 
+  const handleCreateRoom = () => sendNetwork({ type: "create-room" });
+  const handleJoinRoom = () => sendNetwork({ type: "join-room", roomCode: roomCodeInput });
+  const handleStartOnlineGame = () => sendNetwork({ type: "start-game" });
+
   const isGameOver = gameState.state === "gameover";
   const isOverlayVisible = gameState.state !== "playing";
 
@@ -139,7 +262,9 @@ function App() {
           </div>
           <div className="hud-item hp-display">
             <span className="hud-label">HP</span>
-            <strong>{`${"♥ ".repeat(gameState.hp).trim()}${gameState.hp < 3 ? `  ${"· ".repeat(3 - gameState.hp).trim()}` : ""}`}</strong>
+            <strong>{gameState.hp > 3
+              ? `♥ × ${gameState.hp}`
+              : `${"♥ ".repeat(gameState.hp).trim()}${gameState.hp < 3 ? `  ${"· ".repeat(3 - gameState.hp).trim()}` : ""}`}</strong>
           </div>
           <div className="hud-item hud-right">
             <span className="hud-label">BEST</span>
@@ -158,15 +283,68 @@ function App() {
                   <p>{isGameOver
                     ? `SCORE  ${formatScore(gameState.score)}`
                     : "星々のあいだを駆け抜け、宙域を守り抜け。"}</p>
-                  <button type="button" className="start-button" onClick={handleStart}>
-                    {isGameOver ? "RETRY" : "START GAME"} <span>→</span>
-                  </button>
+                  {networkState.player === 0 && (
+                    <button type="button" className="start-button" onClick={handleStart}>
+                      {isGameOver ? "RETRY" : "START GAME"} <span>→</span>
+                    </button>
+                  )}
                   {!isGameOver && (
                     <p className="control-hint">
                       MOVE <kbd>WASD</kbd> / <kbd>← ↑ ↓ →</kbd><br />
                       FIRE <kbd>SPACE</kbd> / <kbd>画面内ボタン</kbd>
                     </p>
                   )}
+                  {networkState.player === 0 ? (
+                    <div className="online-lobby">
+                      <span className="lobby-label">ONLINE CO-OP</span>
+                      <button
+                        type="button"
+                        className="lobby-button"
+                        onClick={handleCreateRoom}
+                        disabled={networkState.status === "connecting" || networkState.status === "disconnected"}
+                      >
+                        ルームを作成
+                      </button>
+                      <div className="join-room">
+                        <input
+                          className="room-code-input"
+                          aria-label="ルームコード"
+                          autoComplete="off"
+                          maxLength={5}
+                          onChange={(event) => setRoomCodeInput(event.target.value.toUpperCase())}
+                          placeholder="コード"
+                          value={roomCodeInput}
+                        />
+                        <button
+                          type="button"
+                          className="lobby-button"
+                          onClick={handleJoinRoom}
+                          disabled={roomCodeInput.length !== 5 || networkState.status === "disconnected"}
+                        >
+                          参加
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="online-lobby">
+                      <span className="lobby-label">ROOM {networkState.roomCode}</span>
+                      <p>{networkState.player === 1
+                        ? networkState.playerCount === 2 ? "相手が参加しました。" : "相手の参加を待っています…"
+                        : "ホストがゲームを開始するのを待っています…"}</p>
+                      {networkState.player === 1 && (
+                        <button
+                          type="button"
+                          className="lobby-button"
+                          onClick={handleStartOnlineGame}
+                          disabled={networkState.playerCount !== 2
+                            || (isGameOver && networkState.status !== "ready")}
+                        >
+                          {isGameOver ? "もう一度プレイ" : "協力プレイ開始"}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {networkState.error && <p className="network-error" role="status">{networkState.error}</p>}
                 </div>
               </div>
             )}

@@ -60,20 +60,21 @@ class InputHandler {
 }
 
 class Player {
-  constructor() {
+  constructor(x = (GAME_WIDTH - 34) / 2, color = "#92f5f4") {
     this.width = 34;
     this.height = 42;
     this.speed = 480;
     this.velocityX = 0;
     this.velocityY = 0;
-    this.x = (GAME_WIDTH - this.width) / 2;
+    this.x = x;
     this.y = GAME_HEIGHT - 92;
     this.fireCooldown = 0;
     this.invulnerableTime = 0;
+    this.color = color;
   }
 
-  update(deltaTime, input, bullets) {
-    const { horizontal, vertical } = input.getMovement();
+  update(deltaTime, input, bullets, movement = input.getMovement(), firing = input.isDown(" ")) {
+    const { horizontal, vertical } = movement;
     const inputResponse = 1 - Math.exp(-16 * deltaTime);
     this.velocityX += (horizontal * this.speed - this.velocityX) * inputResponse;
     this.velocityY += (vertical * this.speed - this.velocityY) * inputResponse;
@@ -91,7 +92,7 @@ class Player {
     }
     this.fireCooldown -= deltaTime;
     this.invulnerableTime = Math.max(0, this.invulnerableTime - deltaTime);
-    if (input.isDown(" ") && this.fireCooldown <= 0) {
+    if (firing && this.fireCooldown <= 0) {
       bullets.push(new Bullet(this.x + this.width / 2, this.y + 4, -520, "player"));
       this.fireCooldown = 0.19;
     }
@@ -107,9 +108,9 @@ class Player {
     if (this.invulnerableTime > 0 && Math.floor(this.invulnerableTime * 14) % 2 === 0) return;
     const center = this.x + this.width / 2;
     context.save();
-    context.shadowColor = "#66e9ef";
+    context.shadowColor = this.color;
     context.shadowBlur = 18;
-    context.fillStyle = "#92f5f4";
+    context.fillStyle = this.color;
     context.beginPath();
     context.moveTo(center, this.y);
     context.lineTo(this.x + this.width, this.y + this.height - 3);
@@ -324,7 +325,7 @@ class Starfield {
 }
 
 class Game {
-  constructor(canvas, onStatus, getControls) {
+  constructor(canvas, onStatus, getControls, onNetwork) {
     context = canvas.getContext("2d");
     this.canvas = canvas;
     this.resizeObserver = new ResizeObserver(() => this.resizeCanvas());
@@ -332,8 +333,14 @@ class Game {
     this.resizeCanvas();
     this.state = "ready";
     this.onStatus = onStatus;
+    this.onNetwork = onNetwork;
     this.input = new InputHandler(getControls);
     this.player = new Player();
+    this.players = [this.player];
+    this.multiplayer = false;
+    this.networkPlayer = 0;
+    this.remoteInput = { moveX: 0, moveY: 0, fire: false };
+    this.lastSnapshotTime = 0;
     this.starfield = new Starfield();
     this.bullets = [];
     this.enemies = [];
@@ -369,8 +376,10 @@ class Game {
 
     if (this.player) {
       const positionScale = GAME_WIDTH / previousWidth;
-      this.player.x *= positionScale;
-      this.player.x = Math.max(0, Math.min(GAME_WIDTH - this.player.width, this.player.x));
+      for (const player of this.players) {
+        player.x *= positionScale;
+        player.x = Math.max(0, Math.min(GAME_WIDTH - player.width, player.x));
+      }
       for (const enemy of this.enemies) {
         enemy.x *= positionScale;
         enemy.originX *= positionScale;
@@ -385,14 +394,23 @@ class Game {
     }
   }
 
-  start() {
+  start(multiplayer = false, networkPlayer = 0) {
     this.input.clear();
-    this.player = new Player();
+    this.multiplayer = multiplayer;
+    this.networkPlayer = networkPlayer;
+    this.remoteInput = { moveX: 0, moveY: 0, fire: false };
+    this.players = multiplayer
+      ? [
+        new Player(GAME_WIDTH * 0.31, "#92f5f4"),
+        new Player(GAME_WIDTH * 0.69 - 34, "#ffc076"),
+      ]
+      : [new Player()];
+    this.player = this.players[0];
     this.bullets = [];
     this.enemies = [];
     this.explosions = [];
     this.score = 0;
-    this.hp = 3;
+    this.hp = multiplayer ? 6 : 3;
     this.elapsedTime = 0;
     this.spawnCooldown = 0.8;
     this.state = "playing";
@@ -422,8 +440,8 @@ class Game {
     this.enemies.push(new Enemy(type, Math.random() * (GAME_WIDTH - 56) + 28, this.difficulty));
   }
 
-  damagePlayer(x, y) {
-    if (!this.player.takeDamage()) return;
+  damagePlayer(x, y, player = this.player) {
+    if (!player.takeDamage()) return;
     this.hp -= 1;
     this.explosions.push(new Explosion(x, y, "#ff718d", 16));
     this.reportStatus();
@@ -444,6 +462,19 @@ class Game {
     this.elapsedTime += deltaTime;
     this.starfield.update(deltaTime * (1 + this.difficulty * 0.12));
     this.player.update(deltaTime, this.input, this.bullets);
+    if (this.multiplayer) {
+      const remoteMovement = {
+        horizontal: this.remoteInput.moveX,
+        vertical: this.remoteInput.moveY,
+      };
+      this.players[1].update(
+        deltaTime,
+        this.input,
+        this.bullets,
+        remoteMovement,
+        this.remoteInput.fire,
+      );
+    }
     this.spawnCooldown -= deltaTime;
     if (this.spawnCooldown <= 0) {
       this.spawnEnemy();
@@ -472,16 +503,24 @@ class Game {
 
     for (let bulletIndex = this.bullets.length - 1; bulletIndex >= 0; bulletIndex -= 1) {
       const bullet = this.bullets[bulletIndex];
-      if (bullet.owner === "enemy" && this.intersects(bullet, this.player)) {
+      const hitPlayer = bullet.owner === "enemy"
+        ? this.players.find((player) => this.intersects(bullet, player))
+        : null;
+      if (hitPlayer) {
         this.bullets.splice(bulletIndex, 1);
-        this.damagePlayer(bullet.x, bullet.y);
+        this.damagePlayer(bullet.x, bullet.y, hitPlayer);
       }
     }
     for (let enemyIndex = this.enemies.length - 1; enemyIndex >= 0; enemyIndex -= 1) {
       const enemy = this.enemies[enemyIndex];
-      if (this.intersects(enemy, this.player)) {
+      const collidedPlayer = this.players.find((player) => this.intersects(enemy, player));
+      if (collidedPlayer) {
         this.enemies.splice(enemyIndex, 1);
-        this.damagePlayer(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+        this.damagePlayer(
+          enemy.x + enemy.width / 2,
+          enemy.y + enemy.height / 2,
+          collidedPlayer,
+        );
       } else if (enemy.y > GAME_HEIGHT + enemy.height) {
         this.enemies.splice(enemyIndex, 1);
       }
@@ -506,27 +545,110 @@ class Game {
       && firstTop < secondBottom && firstBottom > secondTop;
   }
 
-  end() {
-    this.state = "gameover";
-    this.input.clear();
-    this.reportStatus();
-  }
-
   draw() {
     this.starfield.draw();
     for (const bullet of this.bullets) bullet.draw();
     for (const enemy of this.enemies) enemy.draw();
     for (const explosion of this.explosions) explosion.draw();
-    if (this.state !== "gameover") this.player.draw();
+    if (this.state !== "gameover") {
+      for (const player of this.players) player.draw();
+    }
+  }
+
+  setRemoteInput(input) {
+    this.remoteInput = {
+      moveX: Math.max(-1, Math.min(1, Number(input?.moveX) || 0)),
+      moveY: Math.max(-1, Math.min(1, Number(input?.moveY) || 0)),
+      fire: Boolean(input?.fire),
+    };
+  }
+
+  end() {
+    if (this.state !== "playing") return;
+    this.state = "gameover";
+    this.input.clear();
+    this.reportStatus();
+  }
+
+  getLocalInput() {
+    const movement = this.input.getMovement();
+    return {
+      moveX: movement.horizontal,
+      moveY: movement.vertical,
+      fire: this.input.isDown(" "),
+    };
+  }
+
+  createSnapshot() {
+    return {
+      width: GAME_WIDTH,
+      state: this.state,
+      score: this.score,
+      hp: this.hp,
+      highScore: this.highScore,
+      elapsedTime: this.elapsedTime,
+      players: this.players.map((player) => ({ ...player })),
+      bullets: this.bullets.map((bullet) => ({ ...bullet })),
+      enemies: this.enemies.map((enemy) => ({ ...enemy })),
+      explosions: this.explosions.map((explosion) => ({
+        particles: explosion.particles.map((particle) => ({ ...particle })),
+      })),
+    };
+  }
+
+  applySnapshot(snapshot) {
+    const positionScale = GAME_WIDTH / snapshot.width;
+    this.state = snapshot.state;
+    this.score = snapshot.score;
+    this.hp = snapshot.hp;
+    this.highScore = snapshot.highScore;
+    this.elapsedTime = snapshot.elapsedTime;
+    this.players = snapshot.players.map((player) => (
+      Object.assign(new Player(), {
+        ...player,
+        x: player.x * positionScale,
+        velocityX: player.velocityX * positionScale,
+      })
+    ));
+    this.player = this.players[0];
+    this.bullets = snapshot.bullets.map((bullet) => (
+      Object.assign(Object.create(Bullet.prototype), {
+        ...bullet,
+        x: bullet.x * positionScale,
+        velocityX: bullet.velocityX * positionScale,
+      })
+    ));
+    this.enemies = snapshot.enemies.map((enemy) => (
+      Object.assign(Object.create(Enemy.prototype), {
+        ...enemy,
+        x: enemy.x * positionScale,
+        originX: enemy.originX * positionScale,
+      })
+    ));
+    this.explosions = snapshot.explosions.map((explosion) => (
+      Object.assign(Object.create(Explosion.prototype), {
+        ...explosion,
+        particles: explosion.particles.map((particle) => ({
+          ...particle,
+          x: particle.x * positionScale,
+          velocityX: particle.velocityX * positionScale,
+        })),
+      })
+    ));
+    this.reportStatus();
   }
 
   frame(timestamp) {
     const deltaTime = Math.min((timestamp - this.lastTime) / 1000 || 0, 0.05);
     this.lastTime = timestamp;
-    if (this.state === "playing") {
+    if (this.state === "playing" && !(this.multiplayer && this.networkPlayer === 2)) {
       this.update(deltaTime);
     } else {
       this.starfield.update(deltaTime);
+    }
+    if (this.multiplayer && this.networkPlayer === 1 && timestamp - this.lastSnapshotTime >= 50) {
+      this.lastSnapshotTime = timestamp;
+      this.onNetwork?.({ type: "snapshot", snapshot: this.createSnapshot() });
     }
     this.draw();
     this.animationFrame = requestAnimationFrame(this.frame);
@@ -539,10 +661,14 @@ class Game {
   }
 }
 
-export function initializeGame(canvas, onStatus, getControls) {
-  const game = new Game(canvas, onStatus, getControls);
+export function initializeGame(canvas, onStatus, getControls, onNetwork) {
+  const game = new Game(canvas, onStatus, getControls, onNetwork);
   return {
-    start: () => game.start(),
+    start: (multiplayer, networkPlayer) => game.start(multiplayer, networkPlayer),
+    end: () => game.end(),
+    setRemoteInput: (input) => game.setRemoteInput(input),
+    applySnapshot: (snapshot) => game.applySnapshot(snapshot),
+    getLocalInput: () => game.getLocalInput(),
     dispose: () => game.dispose(),
   };
 }
