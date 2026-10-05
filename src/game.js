@@ -167,6 +167,7 @@ const ENEMY_TYPES = {
   scout: { width: 30, height: 31, hp: 1, score: 100, color: "#ff829a", speed: 95 },
   striker: { width: 38, height: 36, hp: 2, score: 200, color: "#ffc076", speed: 78 },
   ace: { width: 52, height: 44, hp: 5, score: 500, color: "#bf9aff", speed: 44 },
+  boss: { width: 126, height: 88, hp: 80, score: 3000, color: "#ff547a", speed: 42 },
 };
 
 class Enemy {
@@ -188,7 +189,35 @@ class Enemy {
   }
 
   update(deltaTime, difficulty, player, bullets) {
-    this.y += this.speed * deltaTime;
+    if (this.type === "boss") {
+      this.y = Math.min(54, this.y + this.speed * deltaTime);
+      this.phase += deltaTime * 0.8;
+      this.x = Math.max(12, Math.min(
+        GAME_WIDTH - this.width - 12,
+        GAME_WIDTH / 2 - this.width / 2 + Math.sin(this.phase) * Math.max(0, (GAME_WIDTH - this.width) / 2 - 12),
+      ));
+      this.fireCooldown -= deltaTime;
+      if (this.fireCooldown <= 0) {
+        const centerX = this.x + this.width / 2;
+        const bulletY = this.y + this.height;
+        const dx = player.x + player.width / 2 - centerX;
+        const dy = player.y + player.height / 2 - bulletY;
+        const angle = Math.atan2(dy, dx);
+        const speed = 205 + difficulty * 14;
+        for (const spread of [-0.22, 0, 0.22]) {
+          bullets.push(new Bullet(
+            centerX,
+            bulletY,
+            Math.sin(angle + spread) * speed,
+            "enemy",
+            Math.cos(angle + spread) * speed,
+          ));
+        }
+        this.fireCooldown = Math.max(0.72, 1.35 - difficulty * 0.08);
+      }
+    } else {
+      this.y += this.speed * deltaTime;
+    }
     if (this.type === "striker") {
       this.phase += deltaTime * 2.1;
       this.x = Math.max(8, Math.min(GAME_WIDTH - this.width - 8, this.originX + Math.sin(this.phase) * 88));
@@ -216,25 +245,45 @@ class Enemy {
     const center = this.x + this.width / 2;
     context.save();
     context.shadowColor = this.color;
-    context.shadowBlur = this.type === "ace" ? 19 : 11;
+    context.shadowBlur = this.type === "boss" ? 28 : this.type === "ace" ? 19 : 11;
     context.fillStyle = this.color;
     context.beginPath();
-    context.moveTo(center, this.y + this.height);
-    context.lineTo(this.x + this.width, this.y + 5);
-    context.lineTo(center + this.width * 0.25, this.y + 12);
-    context.lineTo(center, this.y + 2);
-    context.lineTo(center - this.width * 0.25, this.y + 12);
-    context.lineTo(this.x, this.y + 5);
+    if (this.type === "boss") {
+      context.moveTo(center, this.y + this.height);
+      context.lineTo(this.x + this.width, this.y + this.height * 0.3);
+      context.lineTo(this.x + this.width * 0.76, this.y + this.height * 0.38);
+      context.lineTo(this.x + this.width * 0.67, this.y + 4);
+      context.lineTo(center, this.y + this.height * 0.2);
+      context.lineTo(this.x + this.width * 0.33, this.y + 4);
+      context.lineTo(this.x + this.width * 0.24, this.y + this.height * 0.38);
+      context.lineTo(this.x, this.y + this.height * 0.3);
+    } else {
+      context.moveTo(center, this.y + this.height);
+      context.lineTo(this.x + this.width, this.y + 5);
+      context.lineTo(center + this.width * 0.25, this.y + 12);
+      context.lineTo(center, this.y + 2);
+      context.lineTo(center - this.width * 0.25, this.y + 12);
+      context.lineTo(this.x, this.y + 5);
+    }
     context.closePath();
     context.fill();
     context.shadowBlur = 0;
     context.fillStyle = "#19223c";
-    context.fillRect(center - this.width * 0.12, this.y + 12, this.width * 0.24, this.height * 0.3);
+    if (this.type === "boss") {
+      context.fillRect(center - this.width * 0.1, this.y + this.height * 0.36, this.width * 0.2, this.height * 0.34);
+      context.fillStyle = "#ffe4eb";
+      context.fillRect(this.x + this.width * 0.2, this.y + this.height * 0.48, this.width * 0.12, 6);
+      context.fillRect(this.x + this.width * 0.68, this.y + this.height * 0.48, this.width * 0.12, 6);
+    } else {
+      context.fillRect(center - this.width * 0.12, this.y + 12, this.width * 0.24, this.height * 0.3);
+    }
     if (this.maxHp > 1) {
       context.fillStyle = "rgba(4, 8, 20, .78)";
-      context.fillRect(this.x, this.y - 7, this.width, 3);
+      const barY = this.type === "boss" ? this.y - 12 : this.y - 7;
+      const barHeight = this.type === "boss" ? 6 : 3;
+      context.fillRect(this.x, barY, this.width, barHeight);
       context.fillStyle = this.color;
-      context.fillRect(this.x, this.y - 7, this.width * (this.hp / this.maxHp), 3);
+      context.fillRect(this.x, barY, this.width * (this.hp / this.maxHp), barHeight);
     }
     context.restore();
   }
@@ -346,6 +395,7 @@ class Game {
     this.enemies = [];
     this.explosions = [];
     this.score = 0;
+    this.bossSpawned = false;
     this.hp = 3;
     this.elapsedTime = 0;
     this.spawnCooldown = 1.2;
@@ -410,6 +460,7 @@ class Game {
     this.enemies = [];
     this.explosions = [];
     this.score = 0;
+    this.bossSpawned = false;
     this.hp = multiplayer ? 6 : 3;
     this.elapsedTime = 0;
     this.spawnCooldown = 0.8;
@@ -440,6 +491,11 @@ class Game {
     this.enemies.push(new Enemy(type, Math.random() * (GAME_WIDTH - 56) + 28, this.difficulty));
   }
 
+  spawnBoss() {
+    this.bossSpawned = true;
+    this.enemies.push(new Enemy("boss", GAME_WIDTH / 2, this.difficulty));
+  }
+
   damagePlayer(x, y, player = this.player) {
     if (!player.takeDamage()) return;
     this.hp -= 1;
@@ -451,6 +507,7 @@ class Game {
   award(enemy) {
     this.score += enemy.score;
     this.explosions.push(new Explosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.color));
+    if (!this.bossSpawned && this.score > 5000) this.spawnBoss();
     if (this.score > this.highScore) {
       this.highScore = this.score;
       window.localStorage.setItem("starfall-high-score", String(this.highScore));
@@ -476,7 +533,8 @@ class Game {
       );
     }
     this.spawnCooldown -= deltaTime;
-    if (this.spawnCooldown <= 0) {
+    const bossActive = this.enemies.some((enemy) => enemy.type === "boss");
+    if (!bossActive && this.spawnCooldown <= 0) {
       this.spawnEnemy();
       this.spawnCooldown = Math.max(0.38, 1.25 - this.difficulty * 0.13) + Math.random() * 0.48;
     }
@@ -529,6 +587,9 @@ class Game {
     this.bullets = this.bullets.filter((bullet) => (
       bullet.y > -16 && bullet.y < GAME_HEIGHT + 16 && bullet.x > -16 && bullet.x < GAME_WIDTH + 16
     ));
+    if (bossActive && !this.enemies.some((enemy) => enemy.type === "boss")) {
+      this.spawnCooldown = 1.2;
+    }
     this.explosions = this.explosions.filter((explosion) => explosion.particles.length > 0);
   }
 
