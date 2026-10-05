@@ -71,6 +71,7 @@ class Player {
     this.fireCooldown = 0;
     this.invulnerableTime = 0;
     this.color = color;
+    this.weapon = "normal";
   }
 
   update(deltaTime, input, bullets, movement = input.getMovement(), firing = input.isDown(" ")) {
@@ -93,8 +94,24 @@ class Player {
     this.fireCooldown -= deltaTime;
     this.invulnerableTime = Math.max(0, this.invulnerableTime - deltaTime);
     if (firing && this.fireCooldown <= 0) {
-      bullets.push(new Bullet(this.x + this.width / 2, this.y + 4, -520, "player"));
-      this.fireCooldown = 0.19;
+      const centerX = this.x + this.width / 2;
+      if (this.weapon === "shotgun") {
+        for (const angle of [-0.36, -0.18, 0, 0.18, 0.36]) {
+          const speed = 520;
+          bullets.push(new Bullet(
+            centerX,
+            this.y + 4,
+            -Math.cos(angle) * speed,
+            "player",
+            Math.sin(angle) * speed,
+            "#ffd27a",
+          ));
+        }
+        this.fireCooldown = 0.34;
+      } else {
+        bullets.push(new Bullet(centerX, this.y + 4, -520, "player"));
+        this.fireCooldown = 0.19;
+      }
     }
   }
 
@@ -137,13 +154,15 @@ class Player {
 }
 
 class Bullet {
-  constructor(x, y, velocityY, owner, velocityX = 0) {
+  constructor(x, y, velocityY, owner, velocityX = 0, color = null) {
     this.x = x;
     this.y = y;
     this.velocityX = velocityX;
     this.velocityY = velocityY;
     this.owner = owner;
     this.radius = owner === "player" ? 3 : 4;
+    this.color = color || (owner === "player" ? "#c5ffff" : "#ff7898");
+    this.shadowColor = color || (owner === "player" ? "#72f4f3" : "#ff6e91");
   }
 
   update(deltaTime) {
@@ -153,9 +172,9 @@ class Bullet {
 
   draw() {
     context.save();
-    context.shadowColor = this.owner === "player" ? "#72f4f3" : "#ff6e91";
+    context.shadowColor = this.shadowColor;
     context.shadowBlur = 12;
-    context.fillStyle = this.owner === "player" ? "#c5ffff" : "#ff7898";
+    context.fillStyle = this.color;
     context.beginPath();
     context.ellipse(this.x, this.y, this.radius, this.radius * 2, 0, 0, Math.PI * 2);
     context.fill();
@@ -329,6 +348,37 @@ class Explosion {
   }
 }
 
+class BonusItem {
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+    this.width = 28;
+    this.height = 28;
+    this.speed = 105;
+    this.phase = 0;
+  }
+
+  update(deltaTime) {
+    this.y += this.speed * deltaTime;
+    this.phase += deltaTime * 4;
+  }
+
+  draw() {
+    context.save();
+    context.translate(this.x + this.width / 2, this.y + this.height / 2);
+    context.rotate(Math.PI / 4 + Math.sin(this.phase) * 0.12);
+    context.shadowColor = "#ffd27a";
+    context.shadowBlur = 18;
+    context.fillStyle = "#ffd27a";
+    context.fillRect(-9, -9, 18, 18);
+    context.shadowBlur = 0;
+    context.fillStyle = "#fff4d4";
+    context.fillRect(-3, -12, 6, 24);
+    context.fillRect(-12, -3, 24, 6);
+    context.restore();
+  }
+}
+
 class Starfield {
   constructor() {
     this.stars = [];
@@ -393,9 +443,10 @@ class Game {
     this.starfield = new Starfield();
     this.bullets = [];
     this.enemies = [];
+    this.bonusItems = [];
     this.explosions = [];
     this.score = 0;
-    this.bossSpawned = false;
+    this.nextBossScore = 5000;
     this.hp = 3;
     this.elapsedTime = 0;
     this.spawnCooldown = 1.2;
@@ -437,6 +488,7 @@ class Game {
         enemy.originX = Math.max(0, Math.min(GAME_WIDTH - enemy.width, enemy.originX));
       }
       for (const bullet of this.bullets) bullet.x *= positionScale;
+      for (const item of this.bonusItems) item.x *= positionScale;
       for (const explosion of this.explosions) {
         for (const particle of explosion.particles) particle.x *= positionScale;
       }
@@ -458,9 +510,10 @@ class Game {
     this.player = this.players[0];
     this.bullets = [];
     this.enemies = [];
+    this.bonusItems = [];
     this.explosions = [];
     this.score = 0;
-    this.bossSpawned = false;
+    this.nextBossScore = 5000;
     this.hp = multiplayer ? 6 : 3;
     this.elapsedTime = 0;
     this.spawnCooldown = 0.8;
@@ -492,7 +545,6 @@ class Game {
   }
 
   spawnBoss() {
-    this.bossSpawned = true;
     this.enemies.push(new Enemy("boss", GAME_WIDTH / 2, this.difficulty));
   }
 
@@ -507,7 +559,12 @@ class Game {
   award(enemy) {
     this.score += enemy.score;
     this.explosions.push(new Explosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.color));
-    if (!this.bossSpawned && this.score > 5000) this.spawnBoss();
+    if (enemy.type === "boss") {
+      this.bonusItems.push(new BonusItem(
+        enemy.x + enemy.width / 2 - 14,
+        enemy.y + enemy.height / 2 - 14,
+      ));
+    }
     if (this.score > this.highScore) {
       this.highScore = this.score;
       window.localStorage.setItem("starfall-high-score", String(this.highScore));
@@ -541,6 +598,7 @@ class Game {
 
     for (const bullet of this.bullets) bullet.update(deltaTime);
     for (const enemy of this.enemies) enemy.update(deltaTime, this.difficulty, this.player, this.bullets);
+    for (const item of this.bonusItems) item.update(deltaTime);
     for (const explosion of this.explosions) explosion.update(deltaTime);
 
     for (let bulletIndex = this.bullets.length - 1; bulletIndex >= 0; bulletIndex -= 1) {
@@ -584,11 +642,32 @@ class Game {
       }
     }
 
+    for (let itemIndex = this.bonusItems.length - 1; itemIndex >= 0; itemIndex -= 1) {
+      const item = this.bonusItems[itemIndex];
+      const player = this.players.find((candidate) => this.intersects(item, candidate));
+      if (player) {
+        player.weapon = "shotgun";
+        this.explosions.push(new Explosion(
+          item.x + item.width / 2,
+          item.y + item.height / 2,
+          "#ffd27a",
+          18,
+        ));
+        this.bonusItems.splice(itemIndex, 1);
+      } else if (item.y > GAME_HEIGHT) {
+        this.bonusItems.splice(itemIndex, 1);
+      }
+    }
+
     this.bullets = this.bullets.filter((bullet) => (
       bullet.y > -16 && bullet.y < GAME_HEIGHT + 16 && bullet.x > -16 && bullet.x < GAME_WIDTH + 16
     ));
     if (bossActive && !this.enemies.some((enemy) => enemy.type === "boss")) {
       this.spawnCooldown = 1.2;
+    }
+    if (!this.enemies.some((enemy) => enemy.type === "boss") && this.score >= this.nextBossScore) {
+      this.spawnBoss();
+      this.nextBossScore += 5000;
     }
     this.explosions = this.explosions.filter((explosion) => explosion.particles.length > 0);
   }
@@ -610,6 +689,7 @@ class Game {
     this.starfield.draw();
     for (const bullet of this.bullets) bullet.draw();
     for (const enemy of this.enemies) enemy.draw();
+    for (const item of this.bonusItems) item.draw();
     for (const explosion of this.explosions) explosion.draw();
     if (this.state !== "gameover") {
       for (const player of this.players) player.draw();
@@ -651,6 +731,7 @@ class Game {
       players: this.players.map((player) => ({ ...player })),
       bullets: this.bullets.map((bullet) => ({ ...bullet })),
       enemies: this.enemies.map((enemy) => ({ ...enemy })),
+      bonusItems: this.bonusItems.map((item) => ({ ...item })),
       explosions: this.explosions.map((explosion) => ({
         particles: explosion.particles.map((particle) => ({ ...particle })),
       })),
@@ -684,6 +765,12 @@ class Game {
         ...enemy,
         x: enemy.x * positionScale,
         originX: enemy.originX * positionScale,
+      })
+    ));
+    this.bonusItems = (snapshot.bonusItems || []).map((item) => (
+      Object.assign(Object.create(BonusItem.prototype), {
+        ...item,
+        x: item.x * positionScale,
       })
     ));
     this.explosions = snapshot.explosions.map((explosion) => (
