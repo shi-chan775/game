@@ -3,7 +3,7 @@ import { initializeGame } from "./game.js";
 
 const initialGameState = {
   score: 0,
-  hp: 3,
+  hp: 10,
   highScore: 0,
   state: "ready",
 };

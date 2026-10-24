@@ -447,7 +447,7 @@ class Game {
     this.explosions = [];
     this.score = 0;
     this.nextBossScore = 5000;
-    this.hp = 3;
+    this.hp = 10;
     this.elapsedTime = 0;
     this.spawnCooldown = 1.2;
     this.highScore = Number(window.localStorage.getItem("starfall-high-score") || 0);
@@ -514,7 +514,7 @@ class Game {
     this.explosions = [];
     this.score = 0;
     this.nextBossScore = 5000;
-    this.hp = multiplayer ? 6 : 3;
+    this.hp = multiplayer ? 6 : 10;
     this.elapsedTime = 0;
     this.spawnCooldown = 0.8;
     this.state = "playing";
